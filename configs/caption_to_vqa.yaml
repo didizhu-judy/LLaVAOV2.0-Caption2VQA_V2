@@ -1,0 +1,32 @@
+task_name: caption_to_vqa
+id_field: id
+resume: true
+
+num_workers: 4
+fetch_batch_size: 32
+worker_async_concurrency: 16
+worker_queue_size: 256
+
+output_jsonl: output/caption_to_vqa_results.jsonl
+error_jsonl: output/caption_to_vqa_errors.jsonl
+
+dump_interval_sec: 30
+dump_every_n: 200
+
+endpoint_registry_file: scripts/env/endpoints.json
+endpoint_group: local_multi
+route_strategy: stable_hash
+route_failover: rotate_on_retry
+
+llm_timeout_sec: 60
+llm_max_retries: 3
+llm_retry_backoff_sec: 1.0
+
+ray_local_mode: false
+
+# task config can be overridden by --task-config-json
+task_config:
+  input_jsonl: data/captions.jsonl
+  max_records: 0
+  model: Qwen/Qwen3-30B-A3B-Instruct-2507
+  max_understanding: 5

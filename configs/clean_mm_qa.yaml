@@ -1,0 +1,34 @@
+task_name: clean_mm_qa
+id_field: id
+resume: true
+
+num_workers: 4
+fetch_batch_size: 32
+worker_async_concurrency: 32
+worker_queue_size: 256
+
+output_jsonl: output/clean_mm_qa_judged.jsonl
+error_jsonl: output/clean_mm_qa_errors.jsonl
+
+dump_interval_sec: 30
+dump_every_n: 200
+
+endpoint_registry_file: scripts/env/endpoints.json
+endpoint_group: azure_multi
+route_strategy: least_inflight_weighted
+route_failover: rotate_on_retry
+
+llm_timeout_sec: 90
+llm_max_retries: 3
+llm_retry_backoff_sec: 1.0
+
+ray_local_mode: false
+
+task_config:
+  input_jsonl: data/mmqa.jsonl
+  max_records: 0
+  model: gpt-4o
+  image_root: ""
+  image_detail: low
+  clean_output_jsonl: output/mmqa_clean.jsonl
+  dirty_output_jsonl: output/mmqa_dirty.jsonl

@@ -1,0 +1,49 @@
+{
+  "groups": {
+    "local_multi": {
+      "description": "Local OpenAI-compatible multi-instance endpoints (SGLang/vLLM)",
+      "endpoints": [
+        {
+          "name": "local-0",
+          "provider": "openai_compatible",
+          "url": "http://127.0.0.1:10025/v1/chat/completions",
+          "model": "Qwen/Qwen3-VL-30B-A3B-Instruct",
+          "auth_type": "none",
+          "max_concurrent": 64,
+          "weight": 1.0
+        }
+      ]
+    },
+    "azure_multi": {
+      "description": "Azure OpenAI multi-endpoint with mixed auth",
+      "endpoints": [
+        {
+          "name": "azure-trapi",
+          "provider": "azure_openai",
+          "url": "https://trapi.research.microsoft.com/gcr/shared",
+          "deployment": "gpt-4o_2024-11-20",
+          "api_version": "2024-10-21",
+          "auth_type": "azure_ad",
+          "scope": "api://trapi/.default",
+          "max_concurrent": 200,
+          "weight": 3.0
+        }
+      ]
+    },
+    "openai_multi": {
+      "description": "OpenAI-compatible cloud endpoints",
+      "endpoints": [
+        {
+          "name": "openai-default",
+          "provider": "openai_compatible",
+          "url": "https://api.openai.com/v1/chat/completions",
+          "model": "gpt-4o-mini",
+          "auth_type": "api_key",
+          "api_key_env": "OPENAI_API_KEY",
+          "max_concurrent": 64,
+          "weight": 1.0
+        }
+      ]
+    }
+  }
+}
