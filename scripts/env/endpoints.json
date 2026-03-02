@@ -14,6 +14,83 @@
         }
       ]
     },
+    "sglang_openbee_8ports": {
+      "description": "OpenBee cleaning with 8 SGLang ports (10025-10032)",
+      "endpoints": [
+        {
+          "name": "sglang-10025",
+          "provider": "openai_compatible",
+          "url": "http://27.54.45.176:10025/v1/chat/completions",
+          "model": "Qwen/Qwen3-VL-30B-A3B-Instruct",
+          "auth_type": "none",
+          "max_concurrent": 8,
+          "weight": 1
+        },
+        {
+          "name": "sglang-10026",
+          "provider": "openai_compatible",
+          "url": "http://27.54.45.176:10026/v1/chat/completions",
+          "model": "Qwen/Qwen3-VL-30B-A3B-Instruct",
+          "auth_type": "none",
+          "max_concurrent": 8,
+          "weight": 1
+        },
+        {
+          "name": "sglang-10027",
+          "provider": "openai_compatible",
+          "url": "http://27.54.45.176:10027/v1/chat/completions",
+          "model": "Qwen/Qwen3-VL-30B-A3B-Instruct",
+          "auth_type": "none",
+          "max_concurrent": 8,
+          "weight": 1
+        },
+        {
+          "name": "sglang-10028",
+          "provider": "openai_compatible",
+          "url": "http://27.54.45.176:10028/v1/chat/completions",
+          "model": "Qwen/Qwen3-VL-30B-A3B-Instruct",
+          "auth_type": "none",
+          "max_concurrent": 8,
+          "weight": 1
+        },
+        {
+          "name": "sglang-10029",
+          "provider": "openai_compatible",
+          "url": "http://27.54.45.176:10029/v1/chat/completions",
+          "model": "Qwen/Qwen3-VL-30B-A3B-Instruct",
+          "auth_type": "none",
+          "max_concurrent": 8,
+          "weight": 1
+        },
+        {
+          "name": "sglang-10030",
+          "provider": "openai_compatible",
+          "url": "http://27.54.45.176:10030/v1/chat/completions",
+          "model": "Qwen/Qwen3-VL-30B-A3B-Instruct",
+          "auth_type": "none",
+          "max_concurrent": 8,
+          "weight": 1
+        },
+        {
+          "name": "sglang-10031",
+          "provider": "openai_compatible",
+          "url": "http://27.54.45.176:10031/v1/chat/completions",
+          "model": "Qwen/Qwen3-VL-30B-A3B-Instruct",
+          "auth_type": "none",
+          "max_concurrent": 8,
+          "weight": 1
+        },
+        {
+          "name": "sglang-10032",
+          "provider": "openai_compatible",
+          "url": "http://27.54.45.176:10032/v1/chat/completions",
+          "model": "Qwen/Qwen3-VL-30B-A3B-Instruct",
+          "auth_type": "none",
+          "max_concurrent": 8,
+          "weight": 1
+        }
+      ]
+    },
     "azure_multi": {
       "description": "Azure OpenAI multi-endpoint with mixed auth",
       "endpoints": [

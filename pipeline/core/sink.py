@@ -21,6 +21,8 @@ class ResultSink:
         id_field: str = "id",
         dump_every_n: int = 200,
         dump_interval_sec: float = 30.0,
+        dirty_count_field: str | None = None,
+        initial_dirty_count: int = 0,
     ) -> None:
         self._output_path = Path(output_jsonl)
         self._error_path = Path(error_jsonl)
@@ -30,6 +32,7 @@ class ResultSink:
         self._id_field = id_field
         self._dump_every_n = max(1, int(dump_every_n))
         self._dump_interval_sec = max(0.0, float(dump_interval_sec))
+        self._dirty_count_field = dirty_count_field
 
         self._buffer: list[ProcessedRecord] = []
         self._error_buffer: list[ErrorRecord] = []
@@ -40,6 +43,7 @@ class ResultSink:
         self._duplicates = 0
         self._errors = 0
         self._invalid_results = 0
+        self._dirty_count = int(initial_dirty_count)
         self._last_flush_ts = time.time()
 
     def add_results(self, results: list[ProcessedRecord]) -> dict[str, int]:
@@ -58,6 +62,8 @@ class ResultSink:
             self._written_ids.add(record_id)
             self._buffer.append(record)
             self._accepted += 1
+            if self._dirty_count_field is not None and record.get(self._dirty_count_field) is False:
+                self._dirty_count += 1
 
         if self._should_flush(force=False):
             self._flush_locked()
@@ -94,7 +100,7 @@ class ResultSink:
         return self.stats()
 
     def stats(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "preexisting": self._preexisting,
             "accepted": self._accepted,
             "duplicates": self._duplicates,
@@ -104,6 +110,9 @@ class ResultSink:
             "buffered_errors": len(self._error_buffer),
             "written_total": len(self._written_ids),
         }
+        if self._dirty_count_field is not None:
+            out["dirty_total"] = self._dirty_count
+        return out
 
     def _should_flush(self, force: bool) -> bool:
         if force:

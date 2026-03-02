@@ -1,0 +1,5 @@
+{
+  "http.proxy": "http://172.16.5.77:8889",
+  "http.proxySupport": "override",
+  "http.noProxy": "127.0.0.1,localhost,::1"
+}

@@ -65,6 +65,21 @@ prefetch_model_artifacts() {
 import os
 import sys
 
+# 代理 + 可选禁用 SSL 校验（走企业 TLS 拦截代理时设 HF_HUB_DISABLE_SSL_VERIFY=1）
+proxy = os.environ.get("https_proxy") or os.environ.get("HTTPS_PROXY") or os.environ.get("http_proxy")
+disable_verify = os.environ.get("HF_HUB_DISABLE_SSL_VERIFY", "").lower() in ("1", "true", "yes")
+if proxy or disable_verify:
+    import httpx
+    from huggingface_hub import set_client_factory
+    def _client_factory():
+        kw = {"follow_redirects": True, "timeout": 60.0}
+        if proxy:
+            kw["proxy"] = proxy
+        if disable_verify:
+            kw["verify"] = False
+        return httpx.Client(**kw)
+    set_client_factory(_client_factory)
+
 from huggingface_hub import snapshot_download
 
 model_id = sys.argv[1]
@@ -145,6 +160,13 @@ export HF_HUB_CACHE="${SGLANG_HF_HUB_CACHE:-$HF_HOME/hub}"
 export HUGGINGFACE_HUB_CACHE="$HF_HUB_CACHE"
 export TRANSFORMERS_CACHE="${SGLANG_TRANSFORMERS_CACHE:-$HF_HOME/transformers}"
 mkdir -p "$HF_HOME" "$HF_HUB_CACHE" "$TRANSFORMERS_CACHE"
+
+# 代理：HuggingFace 拉取与网络访问（可选；未设置时使用项目默认代理）
+export http_proxy="${HTTP_PROXY:-${http_proxy:-http://172.16.5.79:18000}}"
+export https_proxy="${HTTPS_PROXY:-${https_proxy:-$http_proxy}}"
+export HTTP_PROXY="$http_proxy"
+export HTTPS_PROXY="$https_proxy"
+log "Using proxy: http_proxy=$http_proxy"
 
 log "start_api_server_multi.sh started"
 if [[ -n "${SLURM_JOB_ID:-}" ]]; then

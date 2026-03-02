@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from typing import Any
 
 from pipeline.types import ProcessedRecord
@@ -13,6 +14,9 @@ def parse_clean_mm_qa_response(
     id_field: str,
 ) -> ProcessedRecord:
     verdict = extract_verdict(llm_response)
+    gen_ppl = _ppl_from_logprobs(llm_response)
+    if gen_ppl is not None:
+        verdict["gen_ppl"] = gen_ppl
     relevance = verdict.get("relevance", "unknown")
     necessity = verdict.get("necessity", "unknown")
     keep = relevance == "relevant" and necessity == "necessary"
@@ -71,3 +75,29 @@ def _extract_content_text(llm_response: dict[str, Any]) -> str:
     if not isinstance(content, str):
         return ""
     return content.strip()
+
+
+def _ppl_from_logprobs(llm_response: dict[str, Any]) -> float | None:
+    """Compute perplexity from chat completion choice logprobs. Returns None if unavailable."""
+    choices = llm_response.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return None
+    first = choices[0]
+    if not isinstance(first, dict):
+        return None
+    logprobs = first.get("logprobs")
+    if not isinstance(logprobs, dict):
+        return None
+    content = logprobs.get("content")
+    if not isinstance(content, list) or not content:
+        return None
+    logps = []
+    for tok in content:
+        if isinstance(tok, dict):
+            lp = tok.get("logprob")
+            if lp is not None:
+                logps.append(float(lp))
+    if not logps:
+        return None
+    mean_logp = sum(logps) / len(logps)
+    return round(math.exp(-mean_logp), 4)

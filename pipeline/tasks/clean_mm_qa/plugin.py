@@ -16,8 +16,37 @@ from pipeline.tasks.clean_mm_qa.splitter import split_clean_dirty
 from pipeline.types import ProcessedRecord, RawItem
 
 
+def _count_jsonl_lines(path: str) -> int:
+    """Count non-empty lines without parsing JSON. Used for resume fast path (1 item => 1 line)."""
+    p = Path(path)
+    if not p.exists():
+        return 0
+    n = 0
+    with p.open("rb") as f:
+        for line in f:
+            if line.strip():
+                n += 1
+    return n
+
+
 class CleanMMQATask(TaskPlugin):
     name = "clean_mm_qa"
+
+    def get_processed_ids_for_resume(
+        self, config: PipelineConfig, items: list[RawItem]
+    ) -> set[str] | None:
+        """If judged file has >= len(items) lines, treat all as done (no JSON parse). Else return None for default."""
+        out_path = config.output_jsonl
+        if not out_path or not items:
+            return None
+        n_judged = _count_jsonl_lines(out_path)
+        if n_judged < len(items):
+            return None
+        return {
+            str(item.get(config.id_field))
+            for item in items
+            if item.get(config.id_field) is not None
+        }
 
     def load_items(self, config: PipelineConfig) -> list[RawItem]:
         task_cfg = config.task_config
@@ -76,6 +105,8 @@ class CleanMMQATask(TaskPlugin):
             )
 
         encoded, mime = _encode_image(image_path)
+        max_tokens = _cfg_int(task_cfg, "max_tokens", default=512)
+        with_ppl = bool(task_cfg.get("with_ppl", False))
         payload = {
             "model": model,
             "messages": [
@@ -94,9 +125,11 @@ class CleanMMQATask(TaskPlugin):
                     ],
                 },
             ],
-            "max_tokens": _cfg_int(task_cfg, "max_tokens", default=256),
+            "max_tokens": max_tokens,
             "temperature": _cfg_float(task_cfg, "temperature", default=0.0),
         }
+        if with_ppl:
+            payload["logprobs"] = True
         return RequestSpec(payload=payload)
 
     def parse_response(
