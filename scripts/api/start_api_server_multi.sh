@@ -69,16 +69,21 @@ import sys
 proxy = os.environ.get("https_proxy") or os.environ.get("HTTPS_PROXY") or os.environ.get("http_proxy")
 disable_verify = os.environ.get("HF_HUB_DISABLE_SSL_VERIFY", "").lower() in ("1", "true", "yes")
 if proxy or disable_verify:
-    import httpx
-    from huggingface_hub import set_client_factory
-    def _client_factory():
-        kw = {"follow_redirects": True, "timeout": 60.0}
-        if proxy:
-            kw["proxy"] = proxy
-        if disable_verify:
-            kw["verify"] = False
-        return httpx.Client(**kw)
-    set_client_factory(_client_factory)
+    try:
+        import httpx
+        from huggingface_hub import set_client_factory
+
+        def _client_factory():
+            kw = {"follow_redirects": True, "timeout": 60.0}
+            if proxy:
+                kw["proxy"] = proxy
+            if disable_verify:
+                kw["verify"] = False
+            return httpx.Client(**kw)
+
+        set_client_factory(_client_factory)
+    except Exception:
+        pass
 
 from huggingface_hub import snapshot_download
 
@@ -223,6 +228,7 @@ if [[ ${#DP_ARRAY[@]} -ne "$NUM_MODELS" ]] || [[ ${#TP_ARRAY[@]} -ne "$NUM_MODEL
 fi
 
 BASE_PORT="${SGLANG_BASE_PORT:-10025}"
+# 上下文越长显存占用越大；超长样本会被服务端截断（可接受则用默认 20K 省显存）。长答案时设 SGLANG_MAX_MODEL_LEN=32768
 MAX_LEN="${SGLANG_MAX_MODEL_LEN:-20480}"
 MEM_FRAC="${SGLANG_MEM_FRACTION:-0.85}"
 HOST="${SGLANG_HOST:-0.0.0.0}"
@@ -283,6 +289,7 @@ for i in $(seq 0 $((NUM_MODELS - 1))); do
 
   LOG="$ROOT/logs/sglang_model_${i}_${LOG_ID}.log"
   log "Launching instance=$i port=$PORT dp=$DP tp=$TP gpus=$GPUS model=$MODEL log=$LOG"
+  CHUNKED_PREFILL="${SGLANG_CHUNKED_PREFILL_SIZE:-10240}"
 
   CUDA_VISIBLE_DEVICES="$GPUS" MASTER_PORT=$((29500 + i)) python -m sglang.launch_server \
     --model-path "$MODEL" \
@@ -293,6 +300,10 @@ for i in $(seq 0 $((NUM_MODELS - 1))); do
     --context-length "$MAX_LEN" \
     --mem-fraction-static "$MEM_FRAC" \
     --trust-remote-code \
+    $([[ -n "$CHUNKED_PREFILL" && "$CHUNKED_PREFILL" != "-" ]] && echo "--chunked-prefill-size $CHUNKED_PREFILL") \
+    --prefill-attention-backend triton \
+    --decode-attention-backend triton \
+    --disable-cuda-graph \
     > "$LOG" 2>&1 &
 
   PIDS+=("$!")

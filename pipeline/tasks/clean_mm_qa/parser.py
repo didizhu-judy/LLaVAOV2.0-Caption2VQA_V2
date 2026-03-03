@@ -12,6 +12,7 @@ def parse_clean_mm_qa_response(
     item: dict[str, Any],
     llm_response: dict[str, Any],
     id_field: str,
+    task_config: dict[str, Any] | None = None,
 ) -> ProcessedRecord:
     verdict = extract_verdict(llm_response)
     gen_ppl = _ppl_from_logprobs(llm_response)
@@ -20,6 +21,13 @@ def parse_clean_mm_qa_response(
     relevance = verdict.get("relevance", "unknown")
     necessity = verdict.get("necessity", "unknown")
     keep = relevance == "relevant" and necessity == "necessary"
+
+    # Optional: filter by judgment PPL when with_ppl and ppl_keep_threshold > 0
+    if keep and task_config:
+        threshold = task_config.get("ppl_keep_threshold")
+        if threshold is not None and float(threshold) > 0 and gen_ppl is not None:
+            if gen_ppl > float(threshold):
+                keep = False
 
     base_record = dict(item.get("raw_record") or {})
     base_record[id_field] = str(item.get(id_field))

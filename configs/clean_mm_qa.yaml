@@ -5,6 +5,7 @@ resume: true
 
 num_workers: 8
 fetch_batch_size: 32
+# 每 worker 并发请求数；8 实例时 8×8=64 总并发（过高会压垮 SGLang）
 worker_async_concurrency: 8
 worker_queue_size: 256
 
@@ -37,5 +38,13 @@ task_config:
   image_detail: low
   max_tokens: 512
   with_ppl: false
+  include_answer_in_judge: true
+  # 服务端 prefill 上限；总 token 超限会 400。此处用于自动截断：预留 system+image 约 1100，剩余给 question+answer
+  # 由 scripts/data/estimate_openbee_prefill_tokens.py 对 25 个 jsonl 前 100 条 QA 统计后建议；略保守 8192 减少 400
+  max_prefill_tokens: 8192
+  # 可选：显式限制 user 文本字符数，与 max_prefill_tokens 推导值取更严
+  # max_user_text_chars: 0
+  # 图片长边超过此值时先缩小再编码，降低 image token 数（0=不缩放）
+  max_image_longer_edge: 1024
   clean_output_jsonl: output/mmqa_clean.jsonl
   dirty_output_jsonl: output/mmqa_dirty.jsonl

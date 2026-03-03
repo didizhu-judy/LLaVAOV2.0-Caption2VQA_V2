@@ -158,7 +158,7 @@ async def _process_item(
         )
 
     try:
-        request_spec = plugin.build_request(item, config)
+        request_spec = await asyncio.to_thread(plugin.build_request, item, config)
     except Exception as exc:  # noqa: BLE001
         return None, plugin.on_error(
             item,
@@ -187,6 +187,9 @@ async def _process_item(
 
     attempts = 0
     llm_response: dict[str, Any] | None = None
+    current_request_spec = request_spec
+    max_prefill_400_retries = 2  # 最多 2 次用更严截断重试
+
     while True:
         attempts += 1
         pick = router.pick(item_id=item_id, attempt=attempts)
@@ -194,16 +197,16 @@ async def _process_item(
         provider = providers[endpoint.provider]
 
         try:
-            if request_spec.url_override:
-                prepared_url = request_spec.url_override
-                prepared_payload = request_spec.payload
-                prepared_headers = {**config.llm_headers, **request_spec.headers}
+            if current_request_spec.url_override:
+                prepared_url = current_request_spec.url_override
+                prepared_payload = current_request_spec.payload
+                prepared_headers = {**config.llm_headers, **current_request_spec.headers}
                 timeout_sec = None
             else:
                 prepared = provider.prepare_request(
                     endpoint=endpoint,
-                    payload=request_spec.payload,
-                    headers={**config.llm_headers, **request_spec.headers},
+                    payload=current_request_spec.payload,
+                    headers={**config.llm_headers, **current_request_spec.headers},
                 )
                 prepared_url = prepared.url
                 prepared_payload = prepared.payload
@@ -237,7 +240,34 @@ async def _process_item(
                     request=response.request,
                     response=response,
                 )
-            response.raise_for_status()
+            if response.status_code == 400 and max_prefill_400_retries > 0:
+                body = (response.text or "").lower()
+                if "too long" in body or "multimodal prompt" in body or "token" in body or "origin_input_ids" in body:
+                    try:
+                        config_dict = config.to_dict()
+                        config_copy = PipelineConfig.from_mapping(
+                            config_dict, apply_env_overrides=False
+                        )
+                        config_copy.task_config = dict(config.task_config)
+                        cur = config_copy.task_config.get("max_prefill_tokens") or 10240
+                        # 第一次减半，第二次固定 2048
+                        next_prefill = max(2048, cur // 2) if cur > 2048 else 2048
+                        config_copy.task_config["max_prefill_tokens"] = next_prefill
+                        current_request_spec = await asyncio.to_thread(plugin.build_request, item, config_copy)
+                        max_prefill_400_retries -= 1
+                        attempts -= 1
+                        continue
+                    except Exception:
+                        pass
+            if response.status_code != 200:
+                if response.status_code == 400 and max_prefill_400_retries <= 0:
+                    body_snippet = (response.text or "")[:600]
+                    raise httpx.HTTPStatusError(
+                        f"400 Bad Request: {body_snippet}",
+                        request=response.request,
+                        response=response,
+                    )
+                response.raise_for_status()
             llm_response = response.json()
             break
         except Exception as exc:  # noqa: BLE001

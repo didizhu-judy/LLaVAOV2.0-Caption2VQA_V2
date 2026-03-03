@@ -1,13 +1,13 @@
 {
   "groups": {
     "local_multi": {
-      "generated_at": "2026-02-23T19:37:12Z",
+      "generated_at": "2026-03-03T10:43:42Z",
       "endpoints": [
         {
           "name": "local-0",
           "provider": "openai_compatible",
           "url": "http://127.0.0.1:10025/v1/chat/completions",
-          "model": "Qwen/Qwen3-VL-30B-A3B-Instruct",
+          "model": "Qwen/Qwen3-VL-32B-Instruct",
           "auth_type": "none",
           "max_concurrent": 256,
           "weight": 1.0
@@ -16,7 +16,7 @@
           "name": "local-1",
           "provider": "openai_compatible",
           "url": "http://127.0.0.1:10026/v1/chat/completions",
-          "model": "Qwen/Qwen3-VL-30B-A3B-Instruct",
+          "model": "Qwen/Qwen3-VL-32B-Instruct",
           "auth_type": "none",
           "max_concurrent": 256,
           "weight": 1.0
@@ -25,7 +25,7 @@
           "name": "local-2",
           "provider": "openai_compatible",
           "url": "http://127.0.0.1:10027/v1/chat/completions",
-          "model": "Qwen/Qwen3-VL-30B-A3B-Instruct",
+          "model": "Qwen/Qwen3-VL-32B-Instruct",
           "auth_type": "none",
           "max_concurrent": 256,
           "weight": 1.0
@@ -34,7 +34,7 @@
           "name": "local-3",
           "provider": "openai_compatible",
           "url": "http://127.0.0.1:10028/v1/chat/completions",
-          "model": "Qwen/Qwen3-VL-30B-A3B-Instruct",
+          "model": "Qwen/Qwen3-VL-32B-Instruct",
           "auth_type": "none",
           "max_concurrent": 256,
           "weight": 1.0
@@ -43,7 +43,7 @@
           "name": "local-4",
           "provider": "openai_compatible",
           "url": "http://127.0.0.1:10029/v1/chat/completions",
-          "model": "Qwen/Qwen3-VL-30B-A3B-Instruct",
+          "model": "Qwen/Qwen3-VL-32B-Instruct",
           "auth_type": "none",
           "max_concurrent": 256,
           "weight": 1.0
@@ -52,7 +52,7 @@
           "name": "local-5",
           "provider": "openai_compatible",
           "url": "http://127.0.0.1:10030/v1/chat/completions",
-          "model": "Qwen/Qwen3-VL-30B-A3B-Instruct",
+          "model": "Qwen/Qwen3-VL-32B-Instruct",
           "auth_type": "none",
           "max_concurrent": 256,
           "weight": 1.0
@@ -61,7 +61,7 @@
           "name": "local-6",
           "provider": "openai_compatible",
           "url": "http://127.0.0.1:10031/v1/chat/completions",
-          "model": "Qwen/Qwen3-VL-30B-A3B-Instruct",
+          "model": "Qwen/Qwen3-VL-32B-Instruct",
           "auth_type": "none",
           "max_concurrent": 256,
           "weight": 1.0
@@ -70,7 +70,7 @@
           "name": "local-7",
           "provider": "openai_compatible",
           "url": "http://127.0.0.1:10032/v1/chat/completions",
-          "model": "Qwen/Qwen3-VL-30B-A3B-Instruct",
+          "model": "Qwen/Qwen3-VL-32B-Instruct",
           "auth_type": "none",
           "max_concurrent": 256,
           "weight": 1.0

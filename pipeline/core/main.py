@@ -20,6 +20,34 @@ from pipeline.providers.registry import resolve_endpoints_for_config
 from pipeline.tasks import get_task_plugin, list_task_names
 
 
+def _check_endpoints_reachable(endpoints: list[Any], timeout_sec: float = 2.0) -> int:
+    """Quick reachability check; returns count of endpoints that respond (connection ok or any HTTP status)."""
+    try:
+        import urllib.request
+        import urllib.error
+        reachable = 0
+        for ep in endpoints:
+            url = getattr(ep, "url", None) or (ep.get("url") if isinstance(ep, dict) else None)
+            if not url:
+                continue
+            try:
+                req = urllib.request.Request(url, method="POST", data=b"{}", headers={"Content-Type": "application/json", "User-Agent": "pipeline-check/1.0"})
+                urllib.request.urlopen(req, timeout=timeout_sec)
+                reachable += 1
+            except urllib.error.HTTPError:
+                reachable += 1  # server responded with 4xx/5xx
+            except OSError as e:
+                if "Connection refused" in str(e) or "timed out" in str(e).lower() or "111" in str(e):
+                    pass
+                else:
+                    reachable += 1
+            except Exception:
+                pass
+        return reachable
+    except Exception:
+        return 0
+
+
 def _count_dirty_in_jsonl(path: str) -> int:
     """Count records with _clean_keep is False (for initial_dirty_count on resume)."""
     p = Path(path)
@@ -74,6 +102,21 @@ def run_pipeline(config: PipelineConfig, *, shutdown_ray_after: bool = True) -> 
 
     endpoints = resolve_endpoints_for_config(config)
     config.endpoints = [endpoint.to_dict() for endpoint in endpoints]
+    n_ep = len(endpoints)
+    print(
+        f"[pipeline] Resolved {n_ep} endpoint(s): {[e.name for e in endpoints]}",
+        file=sys.stderr,
+        flush=True,
+    )
+    reachable = _check_endpoints_reachable(endpoints)
+    if reachable < n_ep and n_ep > 1:
+        print(
+            f"[pipeline] WARNING: Only {reachable}/{n_ep} endpoints reachable. Throughput may be limited. Start all instances (e.g. run_local_sglang.sh) or check ports.",
+            file=sys.stderr,
+            flush=True,
+        )
+    elif reachable == n_ep and n_ep > 1:
+        print(f"[pipeline] All {n_ep} endpoints reachable.", file=sys.stderr, flush=True)
 
     items = plugin.load_items(config)
     if config.resume:

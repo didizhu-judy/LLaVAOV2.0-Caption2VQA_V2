@@ -179,8 +179,10 @@ LOG_FILE="$ROOT/logs/api_${BACKEND}_${LOG_ID}.log"
 if [[ "$BACKEND" == "sglang" ]]; then
   DP="${SGLANG_DP:-8}"
   TP="${SGLANG_TP:-1}"
-  MAX_LEN="${SGLANG_MAX_MODEL_LEN:-20000}"
+  MAX_LEN="${SGLANG_MAX_MODEL_LEN:-20480}"
   MEM_FRAC="${SGLANG_MEM_FRACTION:-0.85}"
+  # 多模态 prefill 过短会报 400（prompt too long）；由 estimate_openbee_prefill_tokens.py 统计建议 10240
+  CHUNKED_PREFILL="${SGLANG_CHUNKED_PREFILL_SIZE:-10240}"
 
   python -m sglang.launch_server \
     --model-path "$MODEL" \
@@ -191,6 +193,7 @@ if [[ "$BACKEND" == "sglang" ]]; then
     --context-length "$MAX_LEN" \
     --mem-fraction-static "$MEM_FRAC" \
     --trust-remote-code \
+    $([[ -n "$CHUNKED_PREFILL" && "$CHUNKED_PREFILL" != "-" ]] && echo "--chunked-prefill-size $CHUNKED_PREFILL") \
     > "$LOG_FILE" 2>&1 &
 else
   TP="${VLLM_TP:-8}"

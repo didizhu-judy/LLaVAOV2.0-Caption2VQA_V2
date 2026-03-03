@@ -33,7 +33,7 @@ from huggingface_hub import HfApi, create_repo, get_token, hf_hub_download, snap
 
 DEFAULT_REPO_ID = "OV2-VideoQA/captions"
 # 脚本内固定代理，不使用系统环境变量中的代理
-DEFAULT_PROXY = "http://172.16.5.79:18000"
+DEFAULT_PROXY = "http://172.16.5.77:8889"
 
 
 def _setup_proxy(cli_proxy: str | None = None):
@@ -127,12 +127,26 @@ def cmd_upload(args):
             raise FileNotFoundError(f"目录不存在: {dataset_dir}")
         if not dataset_dir.is_dir():
             raise ValueError(f"路径不是目录: {dataset_dir}")
+        path_in_repo = (args.path_in_repo or "").strip("/")
+        allow_patterns = args.allow_patterns or None
+        if path_in_repo:
+            print(f"目标路径: {repo_id}/{path_in_repo}")
+        if allow_patterns:
+            print(f"过滤: {allow_patterns}")
+        # 大量文件时，upload_folder 会先扫描再上传，扫描阶段可能无进度条
+        if allow_patterns:
+            print("（大量文件时，扫描与上传进度可能稍后显示，请耐心等待）")
         print(f"正在上传目录: {dataset_dir} -> {repo_id} ...")
-        api.upload_folder(
-            folder_path=str(dataset_dir),
-            repo_id=repo_id,
-            repo_type="dataset",
-        )
+        upload_kw = {
+            "folder_path": str(dataset_dir),
+            "repo_id": repo_id,
+            "repo_type": "dataset",
+        }
+        if path_in_repo:
+            upload_kw["path_in_repo"] = path_in_repo
+        if allow_patterns:
+            upload_kw["allow_patterns"] = allow_patterns
+        api.upload_folder(**upload_kw)
         print("目录上传完成.")
 
     print(f"数据集地址: https://huggingface.co/datasets/{repo_id}")
@@ -192,7 +206,13 @@ def main():
         "--path-in-repo",
         type=str,
         default=None,
-        help="仓库内路径：单文件为最终路径，多文件为目录前缀（如 captions）",
+        help="仓库内路径：单文件为最终路径，多文件为目录前缀；上传目录时为目标子路径（如 original/openbee）",
+    )
+    up.add_argument(
+        "--allow-patterns",
+        action="append",
+        default=[],
+        help="上传目录时只上传匹配的文件（可多次指定），如 '*.jsonl' 或 'ScienceQA/*'",
     )
     up.add_argument("--repo-id", type=str, default=DEFAULT_REPO_ID, help=f"仓库 ID，默认 {DEFAULT_REPO_ID}")
     up.add_argument(

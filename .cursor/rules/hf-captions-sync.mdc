@@ -1,0 +1,46 @@
+---
+description: HF 数据集 OV2-VideoQA/captions 上传与下载的约定与命令
+alwaysApply: true
+---
+
+# Hugging Face 数据集 OV2-VideoQA/captions 同步
+
+本项目中，**默认的 HF 数据集**为 **`OV2-VideoQA/captions`**。凡用户提到「上传到 HF」「从 HF 下载」「传到 captions」「从 captions 拉」等，均指该仓库，无需再追问或重复确认。
+
+## 工具脚本
+
+统一使用项目内脚本：`scripts/data/hf_dataset_sync.py`（默认 `--repo-id` 即为 `OV2-VideoQA/captions`）。
+
+## 上传
+
+- **单个或多个文件**（默认上传到仓库根目录，文件名保持不变）：
+  ```bash
+  python scripts/data/hf_dataset_sync.py upload --file /path/to/file.jsonl
+  python scripts/data/hf_dataset_sync.py upload --file /path/to/a.jsonl --file /path/to/b.jsonl
+  ```
+- **指定仓库内路径**（如放到子目录或改名）：
+  ```bash
+  python scripts/data/hf_dataset_sync.py upload --file /path/to/file.jsonl --path-in-repo 子目录/文件名.jsonl
+  ```
+- **上传整个目录**：
+  ```bash
+  python scripts/data/hf_dataset_sync.py upload --dataset-dir /path/to/dir
+  python scripts/data/hf_dataset_sync.py upload --dataset-dir /path/to/dir --path-in-repo original/xxx
+  ```
+
+## 下载
+
+- **下载整个仓库**（默认保存到 `./data/captions`）：
+  ```bash
+  python scripts/data/hf_dataset_sync.py download --local-dir ./data/captions
+  ```
+- **只下载指定文件**：
+  ```bash
+  python scripts/data/hf_dataset_sync.py download --file 文件名.jsonl --file 其它.jsonl --local-dir ./output
+  ```
+
+## 其他
+
+- 使用前需已登录：`huggingface-cli login` 或设置 `HF_TOKEN`。
+- 脚本内带默认代理；可覆盖：`--proxy http://...`。
+- 数据集页面：https://huggingface.co/datasets/OV2-VideoQA/captions

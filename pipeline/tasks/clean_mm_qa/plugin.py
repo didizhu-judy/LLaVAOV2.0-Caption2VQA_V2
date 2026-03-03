@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import io
 import json
 import mimetypes
 import os
@@ -11,7 +12,7 @@ from typing import Any
 from pipeline.core.config import PipelineConfig
 from pipeline.tasks.base import RequestSpec, TaskPlugin
 from pipeline.tasks.clean_mm_qa.parser import parse_clean_mm_qa_response
-from pipeline.tasks.clean_mm_qa.prompts import CLEAN_JUDGE_SYSTEM
+from pipeline.tasks.clean_mm_qa.prompts import CLEAN_JUDGE_SYSTEM, CLEAN_JUDGE_WITH_ANSWER_SYSTEM
 from pipeline.tasks.clean_mm_qa.splitter import split_clean_dirty
 from pipeline.types import ProcessedRecord, RawItem
 
@@ -104,17 +105,49 @@ class CleanMMQATask(TaskPlugin):
                 },
             )
 
-        encoded, mime = _encode_image(image_path)
+        max_image_longer_edge = _cfg_int(task_cfg, "max_image_longer_edge", default=1024)
+        encoded, mime = _encode_image(image_path, max_longer_edge=max_image_longer_edge)
         max_tokens = _cfg_int(task_cfg, "max_tokens", default=512)
         with_ppl = bool(task_cfg.get("with_ppl", False))
+        include_answer_in_judge = bool(task_cfg.get("include_answer_in_judge", True))
+
+        if include_answer_in_judge:
+            system_content = CLEAN_JUDGE_WITH_ANSWER_SYSTEM
+            answer = item.get("answer")
+            answer_str = (str(answer).strip() if answer is not None else "") or ""
+            user_text_parts = [f"Question:\n{question}"]
+            if answer_str:
+                user_text_parts.append(f"Answer:\n{answer_str}")
+            user_text = "\n\n".join(user_text_parts)
+        else:
+            system_content = CLEAN_JUDGE_SYSTEM
+            user_text = f"Question:\n{question}"
+
+        # 总 token 超过服务端 prefill 上限会 400；按 max_prefill_tokens 自动截断 user 文本
+        # 预留 system+image 约 1100 token，剩余给 question+answer；约 2.5 字符/token（中英混合）
+        max_prefill_tokens = _cfg_int(task_cfg, "max_prefill_tokens", default=8192)
+        reserve_tokens = 1100
+        chars_per_token = 2.5
+        if max_prefill_tokens > 0:
+            derived_chars = max(1500, int((max_prefill_tokens - reserve_tokens) * chars_per_token))
+        else:
+            derived_chars = 0
+        max_user_text_chars = _cfg_int(task_cfg, "max_user_text_chars", default=0)
+        if max_user_text_chars > 0:
+            limit_chars = min(derived_chars, max_user_text_chars) if derived_chars > 0 else max_user_text_chars
+        else:
+            limit_chars = derived_chars
+        if limit_chars > 0 and len(user_text) > limit_chars:
+            user_text = user_text[:limit_chars] + "\n\n[truncated for length]"
+
         payload = {
             "model": model,
             "messages": [
-                {"role": "system", "content": CLEAN_JUDGE_SYSTEM},
+                {"role": "system", "content": system_content},
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": f"Question:\n{question}"},
+                        {"type": "text", "text": user_text},
                         {
                             "type": "image_url",
                             "image_url": {
@@ -142,6 +175,7 @@ class CleanMMQATask(TaskPlugin):
             item=item,
             llm_response=llm_response,
             id_field=config.id_field,
+            task_config=config.task_config,
         )
 
     def finalize_outputs(self, config: PipelineConfig) -> dict[str, Any] | None:
@@ -261,10 +295,27 @@ def _resolve_image_path(record: dict[str, Any], *, image_root: str) -> str:
     return candidate
 
 
-def _encode_image(path: str) -> tuple[str, str]:
+def _encode_image(path: str, max_longer_edge: int = 0) -> tuple[str, str]:
+    """Encode image to base64. If max_longer_edge > 0, resize so longer edge <= that (减少多模态 token 避免 400)."""
     mime, _ = mimetypes.guess_type(path)
     if not mime or not mime.startswith("image/"):
         mime = "image/jpeg"
+    if max_longer_edge > 0:
+        try:
+            from PIL import Image
+            with open(path, "rb") as handle:
+                img = Image.open(handle).convert("RGB")
+            w, h = img.size
+            if max(w, h) > max_longer_edge:
+                ratio = max_longer_edge / max(w, h)
+                new_size = (int(w * ratio), int(h * ratio))
+                img = img.resize(new_size, Image.Resampling.LANCZOS)
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=85)
+            encoded = base64.b64encode(buf.getvalue()).decode("utf-8")
+            return encoded, "image/jpeg"
+        except Exception:
+            pass
     with open(path, "rb") as handle:
         encoded = base64.b64encode(handle.read()).decode("utf-8")
     return encoded, mime

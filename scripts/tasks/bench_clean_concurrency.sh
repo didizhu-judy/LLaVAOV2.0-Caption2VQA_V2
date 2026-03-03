@@ -48,11 +48,13 @@ for C in $CONCURRENCIES; do
   t1=$(date +%s.%N)
   elapsed=$(python3 -c "print(round($t1 - $t0, 2))")
   n=$(wc -l < "$JUDGED_JSONL" 2>/dev/null || echo 0)
+  n_err=0
+  [[ -f "$ERROR_JSONL" ]] && n_err=$(wc -l < "$ERROR_JSONL" 2>/dev/null || echo 0)
   if [[ "$n" -gt 0 ]]; then
     rec_s=$(python3 -c "print(round($n / ($t1 - $t0), 2))")
-    echo "concurrency=$C  records=$n  time=${elapsed}s  rec/s=$rec_s"
+    echo "concurrency=$C  records=$n  errors=$n_err  time=${elapsed}s  rec/s=$rec_s"
   else
-    echo "concurrency=$C  records=0  time=${elapsed}s  rec/s=N/A"
+    echo "concurrency=$C  records=0  errors=$n_err  time=${elapsed}s  rec/s=N/A"
   fi
 done
 
