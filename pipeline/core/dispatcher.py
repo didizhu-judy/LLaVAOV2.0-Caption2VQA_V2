@@ -25,8 +25,15 @@ class DataDispatcher:
         self._skipped = 0
         self._dispatched = 0
         self._invalid = 0
+        self._stop_early = False
+
+    def stop_early(self) -> None:
+        """Signal to stop dispatching; next_batch() will return None from now on."""
+        self._stop_early = True
 
     def next_batch(self, request_size: Optional[int] = None) -> Optional[list[RawItem]]:
+        if self._stop_early:
+            return None
         desired = max(1, int(request_size or self._fetch_batch_size))
         batch: list[RawItem] = []
 

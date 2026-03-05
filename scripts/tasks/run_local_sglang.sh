@@ -25,11 +25,11 @@ export HF_ENDPOINT="${HF_ENDPOINT:-https://hf-mirror.com}"
 # 仅在本机使用时，默认只监听回环地址，避免对外网卡暴露端口
 export SGLANG_HOST="${SGLANG_HOST:-127.0.0.1}"
 
-# 8 卡，每卡 1 个模型实例（DP=1, TP=1 由 multi 脚本默认）
-export NUM_SGLANG_INSTANCES=8
+# 8 卡，每卡 1 个模型实例（DP=1, TP=1 由 multi 脚本默认）；可覆盖为 4 以仅用 4 卡
+export NUM_SGLANG_INSTANCES="${NUM_SGLANG_INSTANCES:-8}"
 export SGLANG_MODEL="${SGLANG_MODEL:-Qwen/Qwen3-VL-32B-Instruct}"
 export SGLANG_BASE_PORT="${SGLANG_BASE_PORT:-10025}"
-# 使用前 8 张 GPU（若机器多于 8 卡可改 CUDA_VISIBLE_DEVICES）
+# 使用前 8 张 GPU（若 0-3 已被占用，可设 CUDA_VISIBLE_DEVICES=4,5,6,7 且 NUM_SGLANG_INSTANCES=4 仅用 4 卡）
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1,2,3,4,5,6,7}"
 
 echo "=== 本地 SGLang 多实例部署 ==="

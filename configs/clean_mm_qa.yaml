@@ -35,8 +35,12 @@ task_config:
   max_records: 0
   model: Qwen/Qwen3-VL-30B-A3B-Instruct
   image_root: ""
-  image_detail: low
-  max_tokens: 512
+  # 法官需看清图内文字/框图细节才能正确判 relevance/necessity；low 易导致误判（如框图题判成 irrelevant）
+  image_detail: high
+  max_tokens: 1024
+  # 分数阈值：relevance_score/necessity_score >= 对应阈值则该项通过，两项都通过才判 clean（默认 4，等价于原 relevant+necessary）
+  relevance_keep_threshold: 4
+  necessity_keep_threshold: 4
   with_ppl: false
   include_answer_in_judge: true
   # 服务端 prefill 上限；总 token 超限会 400。此处用于自动截断：预留 system+image 约 1100，剩余给 question+answer
@@ -44,7 +48,7 @@ task_config:
   max_prefill_tokens: 8192
   # 可选：显式限制 user 文本字符数，与 max_prefill_tokens 推导值取更严
   # max_user_text_chars: 0
-  # 图片长边超过此值时先缩小再编码，降低 image token 数（0=不缩放）
-  max_image_longer_edge: 1024
+  # 图片长边超过此值时先缩小再编码。法官需看清框图/公式/小字，过小会“没看清楚图”误判；建议 >= 1536（0=不缩放）
+  max_image_longer_edge: 1536
   clean_output_jsonl: output/mmqa_clean.jsonl
   dirty_output_jsonl: output/mmqa_dirty.jsonl

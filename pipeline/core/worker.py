@@ -283,8 +283,43 @@ async def _process_item(
                 config=config,
             )
 
+    secondary_llm_response = None
+    if request_spec.secondary_payload is not None and llm_response is not None:
+        try:
+            if current_request_spec.url_override:
+                sec_url = current_request_spec.url_override
+                sec_payload = request_spec.secondary_payload
+                sec_headers = {**config.llm_headers, **current_request_spec.headers}
+                sec_timeout = None
+            else:
+                sec_prepared = provider.prepare_request(
+                    endpoint=endpoint,
+                    payload=request_spec.secondary_payload,
+                    headers={**config.llm_headers, **current_request_spec.headers},
+                )
+                sec_url = sec_prepared.url
+                sec_payload = sec_prepared.payload
+                sec_headers = sec_prepared.headers
+                sec_timeout = sec_prepared.timeout_sec
+            sem = endpoint_sems[pick.index]
+            router.mark_start(pick.index)
+            try:
+                if sem is not None:
+                    async with sem:
+                        sec_resp = await client.post(sec_url, json=sec_payload, headers=sec_headers, timeout=sec_timeout)
+                else:
+                    sec_resp = await client.post(sec_url, json=sec_payload, headers=sec_headers, timeout=sec_timeout)
+            finally:
+                router.mark_done(pick.index)
+            if sec_resp.status_code == 200:
+                secondary_llm_response = sec_resp.json()
+        except Exception:
+            pass
+
     try:
-        processed = plugin.parse_response(item, llm_response or {}, config)
+        processed = plugin.parse_response(
+            item, llm_response or {}, config, secondary_llm_response=secondary_llm_response
+        )
     except Exception as exc:  # noqa: BLE001
         return None, plugin.on_error(
             item,

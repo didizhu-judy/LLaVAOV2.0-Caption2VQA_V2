@@ -12,7 +12,12 @@ from typing import Any
 from pipeline.core.config import PipelineConfig
 from pipeline.tasks.base import RequestSpec, TaskPlugin
 from pipeline.tasks.clean_mm_qa.parser import parse_clean_mm_qa_response
-from pipeline.tasks.clean_mm_qa.prompts import CLEAN_JUDGE_SYSTEM, CLEAN_JUDGE_WITH_ANSWER_SYSTEM
+from pipeline.tasks.clean_mm_qa.prompts import (
+    CLEAN_JUDGE_NECESSITY_ONLY_SYSTEM,
+    CLEAN_JUDGE_RELEVANCE_ONLY_SYSTEM,
+    CLEAN_JUDGE_SYSTEM,
+    CLEAN_JUDGE_WITH_ANSWER_SYSTEM,
+)
 from pipeline.tasks.clean_mm_qa.splitter import split_clean_dirty
 from pipeline.types import ProcessedRecord, RawItem
 
@@ -111,35 +116,67 @@ class CleanMMQATask(TaskPlugin):
         with_ppl = bool(task_cfg.get("with_ppl", False))
         include_answer_in_judge = bool(task_cfg.get("include_answer_in_judge", True))
 
+        max_prefill_tokens = _cfg_int(task_cfg, "max_prefill_tokens", default=8192)
+        reserve_tokens = 1100
+        chars_per_token = 2.5
+        derived_chars = max(1500, int((max_prefill_tokens - reserve_tokens) * chars_per_token)) if max_prefill_tokens > 0 else 0
+        max_user_text_chars = _cfg_int(task_cfg, "max_user_text_chars", default=0)
+        limit_chars = min(derived_chars, max_user_text_chars) if (max_user_text_chars > 0 and derived_chars > 0) else (derived_chars if derived_chars > 0 else max_user_text_chars)
+
+        # 分两次 API：第一次只传图+题判 necessity，第二次传图+题+答案判 relevance
         if include_answer_in_judge:
-            system_content = CLEAN_JUDGE_WITH_ANSWER_SYSTEM
+            user_text_question_only = f"Question:\n{question}"
+            if limit_chars > 0 and len(user_text_question_only) > limit_chars:
+                user_text_question_only = user_text_question_only[:limit_chars] + "\n\n[truncated]"
+            payload_necessity = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": CLEAN_JUDGE_NECESSITY_ONLY_SYSTEM},
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": user_text_question_only},
+                            {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{encoded}", "detail": detail}},
+                        ],
+                    },
+                ],
+                "max_tokens": max_tokens,
+                "temperature": _cfg_float(task_cfg, "temperature", default=0.0),
+            }
+            if with_ppl:
+                payload_necessity["logprobs"] = True
             answer = item.get("answer")
             answer_str = (str(answer).strip() if answer is not None else "") or ""
             user_text_parts = [f"Question:\n{question}"]
             if answer_str:
                 user_text_parts.append(f"Answer:\n{answer_str}")
             user_text = "\n\n".join(user_text_parts)
-        else:
-            system_content = CLEAN_JUDGE_SYSTEM
-            user_text = f"Question:\n{question}"
+            if limit_chars > 0 and len(user_text) > limit_chars:
+                user_text = user_text[:limit_chars] + "\n\n[truncated for length]"
+            payload_relevance = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": CLEAN_JUDGE_RELEVANCE_ONLY_SYSTEM},
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": user_text},
+                            {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{encoded}", "detail": detail}},
+                        ],
+                    },
+                ],
+                "max_tokens": max_tokens,
+                "temperature": _cfg_float(task_cfg, "temperature", default=0.0),
+            }
+            if with_ppl:
+                payload_relevance["logprobs"] = True
+            return RequestSpec(payload=payload_necessity, secondary_payload=payload_relevance)
 
-        # 总 token 超过服务端 prefill 上限会 400；按 max_prefill_tokens 自动截断 user 文本
-        # 预留 system+image 约 1100 token，剩余给 question+answer；约 2.5 字符/token（中英混合）
-        max_prefill_tokens = _cfg_int(task_cfg, "max_prefill_tokens", default=8192)
-        reserve_tokens = 1100
-        chars_per_token = 2.5
-        if max_prefill_tokens > 0:
-            derived_chars = max(1500, int((max_prefill_tokens - reserve_tokens) * chars_per_token))
-        else:
-            derived_chars = 0
-        max_user_text_chars = _cfg_int(task_cfg, "max_user_text_chars", default=0)
-        if max_user_text_chars > 0:
-            limit_chars = min(derived_chars, max_user_text_chars) if derived_chars > 0 else max_user_text_chars
-        else:
-            limit_chars = derived_chars
+        # 不包含答案时：单次请求，图+题
+        system_content = CLEAN_JUDGE_SYSTEM
+        user_text = f"Question:\n{question}"
         if limit_chars > 0 and len(user_text) > limit_chars:
             user_text = user_text[:limit_chars] + "\n\n[truncated for length]"
-
         payload = {
             "model": model,
             "messages": [
@@ -148,13 +185,7 @@ class CleanMMQATask(TaskPlugin):
                     "role": "user",
                     "content": [
                         {"type": "text", "text": user_text},
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:{mime};base64,{encoded}",
-                                "detail": detail,
-                            },
-                        },
+                        {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{encoded}", "detail": detail}},
                     ],
                 },
             ],
@@ -170,12 +201,15 @@ class CleanMMQATask(TaskPlugin):
         item: RawItem,
         llm_response: dict[str, Any],
         config: PipelineConfig,
+        *,
+        secondary_llm_response: dict[str, Any] | None = None,
     ) -> ProcessedRecord:
         return parse_clean_mm_qa_response(
             item=item,
             llm_response=llm_response,
             id_field=config.id_field,
             task_config=config.task_config,
+            secondary_llm_response=secondary_llm_response,
         )
 
     def finalize_outputs(self, config: PipelineConfig) -> dict[str, Any] | None:

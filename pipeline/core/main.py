@@ -148,6 +148,7 @@ def run_pipeline(config: PipelineConfig, *, shutdown_ray_after: bool = True) -> 
             id_field=config.id_field,
             fetch_batch_size=config.fetch_batch_size,
         )
+        stop_after_dirty = int(config.task_config.get("stop_after_dirty") or 0)
         dirty_count_field = (
             config.task_config.get("sink_dirty_count_field")
             or ("_clean_keep" if config.task_name == "clean_mm_qa" else None)
@@ -199,6 +200,13 @@ def run_pipeline(config: PipelineConfig, *, shutdown_ray_after: bool = True) -> 
                         line += f" dirty={flush_result['dirty_total']}"
                     print(line, flush=True, file=sys.stderr)
                     last_printed = written
+                if stop_after_dirty > 0 and flush_result.get("dirty_total", 0) >= stop_after_dirty:
+                    dispatcher.stop_early.remote()
+                    print(
+                        f"  [pipeline] stop_after_dirty={stop_after_dirty} reached, stopping early.",
+                        file=sys.stderr,
+                        flush=True,
+                    )
             if done:
                 finished = ray.get(done[0])
                 worker_summaries.append(finished)
@@ -264,6 +272,7 @@ def _run_batch_mode(base_config: PipelineConfig, input_list_path: str) -> int:
     judged_dir = os.environ.get("JUDGED_DIR") or task_cfg.get("judged_dir") or "output/openbee_judged"
     output_clean_dir = os.environ.get("OUTPUT_CLEAN_DIR") or task_cfg.get("output_clean_dir") or "openbee_clean"
     output_dirty_dir = os.environ.get("OUTPUT_DIRTY_DIR") or task_cfg.get("output_dirty_dir") or "openbee_dirty"
+    output_suffix = os.environ.get("OUTPUT_SUFFIX", "")  # e.g. _v2 for {base}_judged_v2.jsonl
     judged_dir = Path(judged_dir)
     output_clean_dir = Path(output_clean_dir)
     output_dirty_dir = Path(output_dirty_dir)
@@ -275,13 +284,13 @@ def _run_batch_mode(base_config: PipelineConfig, input_list_path: str) -> int:
     for idx, path in enumerate(paths):
         base = Path(path).stem
         file_config_dict = asdict(base_config)
-        file_config_dict["output_jsonl"] = str(judged_dir / f"{base}_judged.jsonl")
-        file_config_dict["error_jsonl"] = str(judged_dir / f"{base}_clean_errors.jsonl")
+        file_config_dict["output_jsonl"] = str(judged_dir / f"{base}_judged{output_suffix}.jsonl")
+        file_config_dict["error_jsonl"] = str(judged_dir / f"{base}_clean_errors{output_suffix}.jsonl")
         file_config_dict["task_config"] = {
             **task_cfg,
             "input_jsonl": path,
-            "clean_output_jsonl": str(output_clean_dir / f"{base}_clean.jsonl"),
-            "dirty_output_jsonl": str(output_dirty_dir / f"{base}_dirty.jsonl"),
+            "clean_output_jsonl": str(output_clean_dir / f"{base}_clean{output_suffix}.jsonl"),
+            "dirty_output_jsonl": str(output_dirty_dir / f"{base}_dirty{output_suffix}.jsonl"),
         }
         file_config = PipelineConfig(**file_config_dict)
         print(f"[{idx + 1}/{total}] {base}", flush=True, file=sys.stderr)

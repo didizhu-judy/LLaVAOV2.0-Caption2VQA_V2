@@ -3,10 +3,22 @@
 Hugging Face 数据集上传/下载（同一脚本，子命令 upload / download）。
 默认仓库：OV2-VideoQA/captions。
 
-使用前请先登录：
+配置说明
+--------
+1. 登录（必须）：
     pip install "huggingface_hub>=0.34.0,<1.0"
     huggingface-cli login
     Token: https://huggingface.co/settings/tokens
+
+2. 下载进度：需安装 tqdm 才会显示进度条，否则只有“正在下载…”无百分比。
+    pip install tqdm
+
+3. 网络方式（按需二选一）：
+   - 直连 HF：不设代理、不设镜像即可（国外或能直连时）。
+   - 国内镜像：下载时加 --hf-mirror，走 https://hf-mirror.com，无需代理。
+   - 代理：脚本默认使用内置代理；可 --proxy http://IP:端口 覆盖。若出现 SSL 错误可加 --no-ssl-verify。
+
+使用前请先完成上述登录；下载大文件时建议安装 tqdm 以查看进度。
 
 上传示例：
     # 上传整个目录
@@ -28,12 +40,29 @@ import argparse
 import os
 from pathlib import Path
 
+import urllib3
 from huggingface_hub import HfApi, create_repo, get_token, hf_hub_download, snapshot_download
+
+# 经代理时若出现 SSL UNEXPECTED_EOF，可用 --no-ssl-verify 跳过证书校验（仅限内网/可信代理）
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 DEFAULT_REPO_ID = "OV2-VideoQA/captions"
 # 脚本内固定代理，不使用系统环境变量中的代理
 DEFAULT_PROXY = "http://172.16.5.77:8889"
+
+
+def _disable_ssl_verify():
+    """经代理出现 SSL UNEXPECTED_EOF 时，让 requests 跳过证书校验（仅限可信代理）。"""
+    import requests
+    _orig = requests.Session.request
+
+    def _request(self, method, url, **kwargs):
+        kwargs.setdefault("verify", False)
+        return _orig(self, method, url, **kwargs)
+
+    requests.Session.request = _request
+    print("已启用 --no-ssl-verify（跳过 HTTPS 证书校验）")
 
 
 def _setup_proxy(cli_proxy: str | None = None):
@@ -153,7 +182,23 @@ def cmd_upload(args):
 
 
 def cmd_download(args):
-    _setup_proxy(args.proxy)
+    # 确保显示下载进度条（huggingface_hub 默认用 tqdm，未设置时才生效）
+    os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "0")
+    try:
+        import tqdm  # noqa: F401
+    except ImportError:
+        print("提示: 安装 tqdm 后可显示下载进度条: pip install tqdm")
+
+    if getattr(args, "hf_mirror", False):
+        os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+        # 走镜像时不用代理，直连国内镜像
+        for k in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"):
+            os.environ.pop(k, None)
+        print("使用 HF 镜像: https://hf-mirror.com（未使用代理）")
+    else:
+        _setup_proxy(args.proxy)
+    if getattr(args, "no_ssl_verify", False):
+        _disable_ssl_verify()
     _ensure_hf_login(args.strict_login_check)
     repo_id = args.repo_id or DEFAULT_REPO_ID
     local_dir = Path(args.local_dir or ".").resolve()
@@ -257,6 +302,16 @@ def main():
         "--strict-login-check",
         action="store_true",
         help="严格模式：在线 whoami 校验失败时直接退出（默认仅警告并继续）",
+    )
+    down.add_argument(
+        "--no-ssl-verify",
+        action="store_true",
+        help="跳过 HTTPS 证书校验（经代理出现 SSL UNEXPECTED_EOF 时使用，仅限可信代理）",
+    )
+    down.add_argument(
+        "--hf-mirror",
+        action="store_true",
+        help="使用国内镜像 https://hf-mirror.com 下载（不走代理，需先 huggingface-cli login）",
     )
 
     args = parser.parse_args()

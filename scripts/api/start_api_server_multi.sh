@@ -249,6 +249,12 @@ for i in $(seq 0 $((NUM_MODELS - 1))); do
   TOTAL_NEEDED=$((TOTAL_NEEDED + NEED))
 done
 
+# 若父进程设置了 CUDA_VISIBLE_DEVICES（如 4,5,6,7），子进程须使用其中的物理 ID
+GPU_LIST=()
+if [[ -n "${CUDA_VISIBLE_DEVICES:-}" ]]; then
+  IFS=',' read -ra GPU_LIST <<< "$CUDA_VISIBLE_DEVICES"
+fi
+
 ALLOCATED_GPUS="${SLURM_GPUS_ON_NODE:-8}"
 if [[ -n "${SLURM_JOB_ID:-}" && "$TOTAL_NEEDED" -gt "$ALLOCATED_GPUS" ]]; then
   echo "Need $TOTAL_NEEDED GPUs but only $ALLOCATED_GPUS allocated"
@@ -282,10 +288,17 @@ for i in $(seq 0 $((NUM_MODELS - 1))); do
   GPU_END=${GPU_END_ARRAY[$i]}
 
   GPUS=""
-  for g in $(seq "$GPU_START" "$GPU_END"); do
-    [[ -n "$GPUS" ]] && GPUS+=","
-    GPUS+="$g"
-  done
+  if [[ ${#GPU_LIST[@]} -gt 0 ]]; then
+    for g in $(seq "$GPU_START" "$GPU_END"); do
+      [[ -n "$GPUS" ]] && GPUS+=","
+      GPUS+="${GPU_LIST[$g]}"
+    done
+  else
+    for g in $(seq "$GPU_START" "$GPU_END"); do
+      [[ -n "$GPUS" ]] && GPUS+=","
+      GPUS+="$g"
+    done
+  fi
 
   LOG="$ROOT/logs/sglang_model_${i}_${LOG_ID}.log"
   log "Launching instance=$i port=$PORT dp=$DP tp=$TP gpus=$GPUS model=$MODEL log=$LOG"

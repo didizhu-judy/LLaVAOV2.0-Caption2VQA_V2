@@ -1,0 +1,6 @@
+WARNING: Ignoring invalid distribution -orch (/vlm/yinxie/miniconda3_ubuntu2204/lib/python3.10/site-packages)
+WARNING: Ignoring invalid distribution -ransformers (/vlm/yinxie/miniconda3_ubuntu2204/lib/python3.10/site-packages)
+WARNING: Ignoring invalid distribution -ympy (/vlm/yinxie/miniconda3_ubuntu2204/lib/python3.10/site-packages)
+Looking in indexes: http://mirrors.baidubce.com/pypi/simple/
+Collecting sgl-kernel
+  Downloading http://mirrors.baidubce.com/pypi/packages/36/9f/f836e126002c7cfcfe35418f6cff5a63fe3f529c609b334ca4775354b4d5/sgl_kernel-0.3.21-cp310-abi3-manylinux2014_x86_64.whl (535.6 MB)

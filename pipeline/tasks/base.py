@@ -15,6 +15,8 @@ class RequestSpec:
     url_override: str | None = None
     skip_http: bool = False
     local_response: dict[str, Any] | None = None
+    # 第二次请求（与 payload 同 endpoint）：若 set，worker 先发 payload 再发 secondary_payload，将两次响应一并交给 parse_response
+    secondary_payload: dict[str, Any] | None = None
 
 
 class TaskPlugin(ABC):
@@ -34,8 +36,10 @@ class TaskPlugin(ABC):
         item: RawItem,
         llm_response: dict[str, Any],
         config: PipelineConfig,
+        *,
+        secondary_llm_response: dict[str, Any] | None = None,
     ) -> ProcessedRecord:
-        """Parse LLM response into final output schema."""
+        """Parse LLM response into final output schema. If secondary_llm_response is set, it is the second API response (e.g. two-phase judge)."""
 
     def on_error(
         self,

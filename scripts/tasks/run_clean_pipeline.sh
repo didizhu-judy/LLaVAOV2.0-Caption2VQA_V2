@@ -20,10 +20,19 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
+# 激活项目虚拟环境（与 start_api_server_multi.sh 一致）
+if [[ -f "$ROOT/.venv/bin/activate" ]]; then
+  source "$ROOT/.venv/bin/activate"
+fi
+
 INPUT="${INPUT:-}"
 INPUT_DIR="${INPUT_DIR:-}"
 # 仅处理 OpenBee 25 个 jsonl 且输出到 openbee_clean_new / openbee_dirty_new：OPENBEE_25_ONLY=1
 OPENBEE_25_ONLY="${OPENBEE_25_ONLY:-0}"
+# 输出带 _v2 后缀（目录与文件名）：OPENBEE_V2=1 => openbee_judged_v2, openbee_clean_v2, openbee_dirty_v2，且 OUTPUT_SUFFIX=_v2
+OPENBEE_V2="${OPENBEE_V2:-0}"
+# 每文件累计 dirty 达到此数即停止该文件（用于先看质量）：STOP_AFTER_DIRTY=10
+STOP_AFTER_DIRTY="${STOP_AFTER_DIRTY:-0}"
 # 25 个 jsonl 的 stem（与 scripts/data/upload_openbee_to_hf.sh 的 FILES 一致）
 OPENBEE_25_STEMS=(
   MAVIS_Function "GeoQA+" MAVIS-Geo ScienceQA MAVIS-Metagen Geometry3K GeomVerse UniGeo
@@ -41,12 +50,19 @@ else
   OUTPUT_CLEAN_DIR="${OUTPUT_CLEAN_DIR:-/ov2/dataset_jsonl/openbee_clean}"
   OUTPUT_DIRTY_DIR="${OUTPUT_DIRTY_DIR:-/ov2/dataset_jsonl/openbee_dirty}"
 fi
+if [[ "$OPENBEE_V2" == "1" || "$OPENBEE_V2" == "true" || "$OPENBEE_V2" == "yes" ]]; then
+  JUDGED_DIR="$ROOT/output/openbee_judged_v2"
+  OUTPUT_CLEAN_DIR="/ov2/dataset_jsonl/openbee_clean_v2"
+  OUTPUT_DIRTY_DIR="/ov2/dataset_jsonl/openbee_dirty_v2"
+  export OUTPUT_SUFFIX="_v2"
+fi
 
 BACKEND_PROFILE="${BACKEND_PROFILE:-local_multi}"
 MAX_RECORDS="${MAX_RECORDS:-0}"
 MODEL="${MODEL:-Qwen/Qwen3-VL-30B-A3B-Instruct}"
 IMAGE_ROOT="${IMAGE_ROOT:-}"
-IMAGE_DETAIL="${IMAGE_DETAIL:-low}"
+# high 便于法官看清框图/公式/小字，减少“没看清楚图”导致的误判
+IMAGE_DETAIL="${IMAGE_DETAIL:-high}"
 
 WORKERS="${WORKERS:-8}"
 # 每 worker 并发数；8 实例时 8×8=64 总并发（过高会压垮 SGLang，反而更慢）
@@ -72,10 +88,11 @@ export PIPELINE_RESUME="${RESUME:-1}"
 run_one() {
   local input_jsonl="$1"
   local base="$2"
-  local judged_jsonl="$JUDGED_DIR/${base}_judged.jsonl"
-  local error_jsonl="$JUDGED_DIR/${base}_clean_errors.jsonl"
-  local clean_jsonl="$OUTPUT_CLEAN_DIR/${base}_clean.jsonl"
-  local dirty_jsonl="$OUTPUT_DIRTY_DIR/${base}_dirty.jsonl"
+  local suffix="${OUTPUT_SUFFIX:-}"
+  local judged_jsonl="$JUDGED_DIR/${base}_judged${suffix}.jsonl"
+  local error_jsonl="$JUDGED_DIR/${base}_clean_errors${suffix}.jsonl"
+  local clean_jsonl="$OUTPUT_CLEAN_DIR/${base}_clean${suffix}.jsonl"
+  local dirty_jsonl="$OUTPUT_DIRTY_DIR/${base}_dirty${suffix}.jsonl"
 
   export PIPELINE_OUTPUT_JSONL="$judged_jsonl"
   export PIPELINE_ERROR_JSONL="$error_jsonl"
@@ -95,6 +112,8 @@ d = {
 }
 if os.environ.get("MAX_PREFILL_TOKENS"):
   d["max_prefill_tokens"] = int(os.environ["MAX_PREFILL_TOKENS"])
+if int(os.environ.get("STOP_AFTER_DIRTY", "0") or 0) > 0:
+  d["stop_after_dirty"] = int(os.environ.get("STOP_AFTER_DIRTY"))
 v = os.environ.get("INCLUDE_ANSWER_IN_JUDGE", "").strip().lower()
 if v in ("0", "false", "no", "off"):
   d["include_answer_in_judge"] = False
@@ -151,6 +170,12 @@ if [[ -n "$INPUT_DIR" ]]; then
   if [[ -n "${MAX_RECORDS:-}" && "${MAX_RECORDS:-0}" -gt 0 ]]; then
     echo "  (MAX_RECORDS=$MAX_RECORDS, 每文件最多处理条数，用于试跑)"
   fi
+  if [[ -n "${STOP_AFTER_DIRTY:-}" && "${STOP_AFTER_DIRTY:-0}" -gt 0 ]]; then
+    echo "  (STOP_AFTER_DIRTY=$STOP_AFTER_DIRTY, 每文件累计 dirty 达此数即停)"
+  fi
+  if [[ "$OPENBEE_V2" == "1" || "$OPENBEE_V2" == "true" || "$OPENBEE_V2" == "yes" ]]; then
+    echo "  (OPENBEE_V2: 输出带 _v2 后缀)"
+  fi
   export INPUT_LIST="$SIZE_LIST"
   export JUDGED_DIR
   export OUTPUT_CLEAN_DIR
@@ -158,6 +183,8 @@ if [[ -n "$INPUT_DIR" ]]; then
   DIR_TASK_JSON=$(python3 -c "
 import json, os
 d = {\"max_records\": $MAX_RECORDS}
+if int(os.environ.get(\"STOP_AFTER_DIRTY\", \"0\") or 0) > 0:
+  d[\"stop_after_dirty\"] = int(os.environ.get(\"STOP_AFTER_DIRTY\"))
 v = os.environ.get(\"INCLUDE_ANSWER_IN_JUDGE\", \"\").strip().lower()
 if v in (\"0\", \"false\", \"no\", \"off\"): d[\"include_answer_in_judge\"] = False
 elif v in (\"1\", \"true\", \"yes\", \"on\"): d[\"include_answer_in_judge\"] = True
