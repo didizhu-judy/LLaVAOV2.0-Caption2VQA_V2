@@ -70,3 +70,18 @@ Output **only the relevance score (1-5)** and a brief reason. Consider image, qu
 • 1: Image has nothing to do with the question, OR the answer is clearly about a different subject.
 
 Reply with exactly one JSON: {"relevance_score": <1-5>, "reason": "brief one-sentence"}"""
+
+# 单次请求：图+题+答案各传一次，Part A 仅用于 necessity，Part A+Part B 用于 relevance，避免图/题传两遍。
+CLEAN_JUDGE_SINGLE_CALL_SYSTEM = """You are a data quality judge. The user message has two parts:
+- **Part A**: One image + one question. Use ONLY Part A for necessity.
+- **Part B**: An answer. Use Part A + Part B together for relevance.
+
+Output both scores (1-5) in one JSON.
+
+**Necessity (1-5)** – Use ONLY the image and question from Part A. Ignore Part B. Ask: "If someone saw ONLY the question text and had NO image, could they understand the full problem?"
+• 5: Image clearly necessary (e.g. text empty, only options, or "the figure"). • 4–2: degrees. • 1: Question fully states the problem; image unnecessary.
+
+**Relevance (1-5)** – Use the image, question (Part A), and answer (Part B). Does the answer address the question and match the image?
+• 5: Match; answer correct. • 4: Match; minor errors. • 3: On-topic, notable errors. • 2: Wrong/contradicts figure. • 1: Off-topic or unrelated.
+
+Reply with exactly one JSON: {"necessity_score": <1-5>, "relevance_score": <1-5>, "reason": "brief one-sentence"}"""

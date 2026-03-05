@@ -13,10 +13,8 @@ from pipeline.core.config import PipelineConfig
 from pipeline.tasks.base import RequestSpec, TaskPlugin
 from pipeline.tasks.clean_mm_qa.parser import parse_clean_mm_qa_response
 from pipeline.tasks.clean_mm_qa.prompts import (
-    CLEAN_JUDGE_NECESSITY_ONLY_SYSTEM,
-    CLEAN_JUDGE_RELEVANCE_ONLY_SYSTEM,
+    CLEAN_JUDGE_SINGLE_CALL_SYSTEM,
     CLEAN_JUDGE_SYSTEM,
-    CLEAN_JUDGE_WITH_ANSWER_SYSTEM,
 )
 from pipeline.tasks.clean_mm_qa.splitter import split_clean_dirty
 from pipeline.types import ProcessedRecord, RawItem
@@ -123,54 +121,33 @@ class CleanMMQATask(TaskPlugin):
         max_user_text_chars = _cfg_int(task_cfg, "max_user_text_chars", default=0)
         limit_chars = min(derived_chars, max_user_text_chars) if (max_user_text_chars > 0 and derived_chars > 0) else (derived_chars if derived_chars > 0 else max_user_text_chars)
 
-        # 分两次 API：第一次只传图+题判 necessity，第二次传图+题+答案判 relevance
+        # 单次 API：图+题+答案各传一次，Part A（图+题）仅判 necessity，Part A+Part B（答案）判 relevance，不重复传图/题
         if include_answer_in_judge:
-            user_text_question_only = f"Question:\n{question}"
-            if limit_chars > 0 and len(user_text_question_only) > limit_chars:
-                user_text_question_only = user_text_question_only[:limit_chars] + "\n\n[truncated]"
-            payload_necessity = {
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": CLEAN_JUDGE_NECESSITY_ONLY_SYSTEM},
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": user_text_question_only},
-                            {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{encoded}", "detail": detail}},
-                        ],
-                    },
-                ],
-                "max_tokens": max_tokens,
-                "temperature": _cfg_float(task_cfg, "temperature", default=0.0),
-            }
-            if with_ppl:
-                payload_necessity["logprobs"] = True
             answer = item.get("answer")
             answer_str = (str(answer).strip() if answer is not None else "") or ""
-            user_text_parts = [f"Question:\n{question}"]
-            if answer_str:
-                user_text_parts.append(f"Answer:\n{answer_str}")
-            user_text = "\n\n".join(user_text_parts)
-            if limit_chars > 0 and len(user_text) > limit_chars:
-                user_text = user_text[:limit_chars] + "\n\n[truncated for length]"
-            payload_relevance = {
+            part_a = f"Part A – Image and Question (use only this for necessity):\nQuestion:\n{question}"
+            if limit_chars > 0 and len(part_a) > limit_chars:
+                part_a = part_a[:limit_chars] + "\n\n[truncated]"
+            part_b = "Part B – Answer (use Part A + Part B for relevance):\nAnswer:\n" + (answer_str or "(empty)")
+            if limit_chars > 0 and len(part_b) > limit_chars:
+                part_b = part_b[:limit_chars] + "\n\n[truncated]"
+            user_content = [
+                {"type": "text", "text": part_a},
+                {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{encoded}", "detail": detail}},
+                {"type": "text", "text": part_b},
+            ]
+            payload = {
                 "model": model,
                 "messages": [
-                    {"role": "system", "content": CLEAN_JUDGE_RELEVANCE_ONLY_SYSTEM},
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": user_text},
-                            {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{encoded}", "detail": detail}},
-                        ],
-                    },
+                    {"role": "system", "content": CLEAN_JUDGE_SINGLE_CALL_SYSTEM},
+                    {"role": "user", "content": user_content},
                 ],
                 "max_tokens": max_tokens,
                 "temperature": _cfg_float(task_cfg, "temperature", default=0.0),
             }
             if with_ppl:
-                payload_relevance["logprobs"] = True
-            return RequestSpec(payload=payload_necessity, secondary_payload=payload_relevance)
+                payload["logprobs"] = True
+            return RequestSpec(payload=payload)
 
         # 不包含答案时：单次请求，图+题
         system_content = CLEAN_JUDGE_SYSTEM
