@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from pipeline.tasks.base import TaskPlugin
+from pipeline.tasks.benchmark_similarity import BenchmarkSimilarityTask
 from pipeline.tasks.caption_to_vqa import CaptionToVQATask
 from pipeline.tasks.clean_mm_qa import CleanMMQATask
 
 _TASKS: dict[str, type[TaskPlugin]] = {
+    BenchmarkSimilarityTask.name: BenchmarkSimilarityTask,
     CaptionToVQATask.name: CaptionToVQATask,
     CleanMMQATask.name: CleanMMQATask,
 }

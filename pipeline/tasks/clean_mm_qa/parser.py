@@ -26,17 +26,32 @@ def parse_clean_mm_qa_response(
         verdict["gen_ppl"] = gen_ppl
     rel_score = verdict.get("relevance_score")
     nec_score = verdict.get("necessity_score")
+    keep_strategy = "and"
+    if task_config:
+        keep_strategy = str(task_config.get("keep_strategy") or "and").strip().lower()
+    if keep_strategy not in {"and", "relevance_only", "necessity_only"}:
+        keep_strategy = "and"
     if rel_score is not None and nec_score is not None:
         rel_thresh = 4
         nec_thresh = 4
         if task_config:
             rel_thresh = float(task_config.get("relevance_keep_threshold") or 4)
             nec_thresh = float(task_config.get("necessity_keep_threshold") or 4)
-        keep = rel_score >= rel_thresh and nec_score >= nec_thresh
+        if keep_strategy == "relevance_only":
+            keep = rel_score >= rel_thresh
+        elif keep_strategy == "necessity_only":
+            keep = nec_score >= nec_thresh
+        else:
+            keep = rel_score >= rel_thresh and nec_score >= nec_thresh
     else:
         relevance = verdict.get("relevance", "unknown")
         necessity = verdict.get("necessity", "unknown")
-        keep = relevance == "relevant" and necessity == "necessary"
+        if keep_strategy == "relevance_only":
+            keep = relevance == "relevant"
+        elif keep_strategy == "necessity_only":
+            keep = necessity == "necessary"
+        else:
+            keep = relevance == "relevant" and necessity == "necessary"
 
     # Optional: filter by judgment PPL when with_ppl and ppl_keep_threshold > 0
     if keep and task_config:

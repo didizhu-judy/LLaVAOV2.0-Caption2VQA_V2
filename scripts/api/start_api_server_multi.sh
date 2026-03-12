@@ -230,7 +230,7 @@ fi
 BASE_PORT="${SGLANG_BASE_PORT:-10025}"
 # 上下文越长显存占用越大；超长样本会被服务端截断（可接受则用默认 20K 省显存）。长答案时设 SGLANG_MAX_MODEL_LEN=32768
 MAX_LEN="${SGLANG_MAX_MODEL_LEN:-20480}"
-MEM_FRAC="${SGLANG_MEM_FRACTION:-0.85}"
+MEM_FRAC="${SGLANG_MEM_FRACTION:-0.78}"
 HOST="${SGLANG_HOST:-0.0.0.0}"
 HEALTH_TIMEOUT_SEC="${SGLANG_HEALTH_TIMEOUT_SEC:-1800}"
 HEALTH_CHECK_INTERVAL_SEC="${SGLANG_HEALTH_CHECK_INTERVAL_SEC:-5}"
@@ -303,7 +303,8 @@ for i in $(seq 0 $((NUM_MODELS - 1))); do
   LOG="$ROOT/logs/sglang_model_${i}_${LOG_ID}.log"
   log "Launching instance=$i port=$PORT dp=$DP tp=$TP gpus=$GPUS model=$MODEL log=$LOG"
   CHUNKED_PREFILL="${SGLANG_CHUNKED_PREFILL_SIZE:-10240}"
-
+  # 模型已预取到本地时，离线加载避免 429/超时（HF_HUB_OFFLINE=1 仅读 cache，不请求镜像）
+  export HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-1}"
   CUDA_VISIBLE_DEVICES="$GPUS" MASTER_PORT=$((29500 + i)) python -m sglang.launch_server \
     --model-path "$MODEL" \
     --dp "$DP" \

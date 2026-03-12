@@ -21,6 +21,7 @@ class RequestSpec:
 
 class TaskPlugin(ABC):
     name: str = ""
+    requires_endpoints: bool = True
 
     @abstractmethod
     def load_items(self, config: PipelineConfig) -> list[RawItem]:

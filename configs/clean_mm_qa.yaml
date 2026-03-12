@@ -38,11 +38,17 @@ task_config:
   # 法官需看清图内文字/框图细节才能正确判 relevance/necessity；low 易导致误判（如框图题判成 irrelevant）
   image_detail: high
   max_tokens: 1024
-  # 分数阈值：relevance_score/necessity_score >= 对应阈值则该项通过，两项都通过才判 clean（默认 4，等价于原 relevant+necessary）
-  relevance_keep_threshold: 4
-  necessity_keep_threshold: 4
+  # 保留策略：
+  # - and: relevance 与 necessity 都需达标
+  # - relevance_only: 仅 relevance 达标即可保留（推荐用于“清理图文无关”）
+  # - necessity_only: 仅 necessity 达标即可保留
+  keep_strategy: relevance_only
+  # 分数阈值：relevance_score/necessity_score >= 对应阈值则该项通过。
+  relevance_keep_threshold: 3
+  # 临时下调到 1：当前策略下 necessity 仅做标注，不参与 dirty 主过滤。
+  necessity_keep_threshold: 3
   with_ppl: false
-  include_answer_in_judge: true
+  include_answer_in_judge: false
   # 服务端 prefill 上限；总 token 超限会 400。此处用于自动截断：预留 system+image 约 1100，剩余给 question+answer
   # 由 scripts/data/estimate_openbee_prefill_tokens.py 对 25 个 jsonl 前 100 条 QA 统计后建议；略保守 8192 减少 400
   max_prefill_tokens: 8192

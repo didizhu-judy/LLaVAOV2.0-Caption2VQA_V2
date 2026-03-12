@@ -101,6 +101,8 @@ def _ensure_hf_login(strict_check: bool = False) -> HfApi:
 
 
 def cmd_upload(args):
+    if getattr(args, "no_ssl_verify", False):
+        _disable_ssl_verify()
     _setup_proxy(args.proxy)
     api = _ensure_hf_login(args.strict_login_check)
     repo_id = args.repo_id or DEFAULT_REPO_ID
@@ -162,21 +164,68 @@ def cmd_upload(args):
             print(f"目标路径: {repo_id}/{path_in_repo}")
         if allow_patterns:
             print(f"过滤: {allow_patterns}")
-        # 大量文件时，upload_folder 会先扫描再上传，扫描阶段可能无进度条
-        if allow_patterns:
-            print("（大量文件时，扫描与上传进度可能稍后显示，请耐心等待）")
-        print(f"正在上传目录: {dataset_dir} -> {repo_id} ...")
-        upload_kw = {
-            "folder_path": str(dataset_dir),
-            "repo_id": repo_id,
-            "repo_type": "dataset",
-        }
-        if path_in_repo:
-            upload_kw["path_in_repo"] = path_in_repo
-        if allow_patterns:
-            upload_kw["allow_patterns"] = allow_patterns
-        api.upload_folder(**upload_kw)
-        print("目录上传完成.")
+
+        use_large = getattr(args, "large_folder", False)
+        if use_large:
+            # 大目录单次 commit 易 504；HF 单目录最多 10000 文件，超过则拆成 path_in_repo/0/, path_in_repo/1/ ...
+            import shutil
+            import tempfile
+            if not path_in_repo:
+                raise ValueError("使用 --large-folder 时必须指定 --path-in-repo")
+            all_files = [f for f in dataset_dir.rglob("*") if f.is_file()]
+            if allow_patterns or True:
+                from huggingface_hub.utils import DEFAULT_IGNORE_PATTERNS, filter_repo_objects
+                rel_paths = [f.relative_to(dataset_dir).as_posix() for f in all_files]
+                rel_paths = list(filter_repo_objects(rel_paths, allow_patterns=allow_patterns or ["*"], ignore_patterns=DEFAULT_IGNORE_PATTERNS))
+                all_files = [dataset_dir / p for p in rel_paths]
+            commit_batch_size = 150
+            dir_limit = 10000  # HF 单目录文件数上限
+            total = len(all_files)
+            n_subdirs = (total + dir_limit - 1) // dir_limit if total > dir_limit else 1
+            if n_subdirs > 1:
+                print(f"目录共 {total} 个文件，超过 HF 单目录 {dir_limit} 限制，将拆成 {n_subdirs} 个子目录上传")
+            print(f"正在上传目录（分批模式，共 {total} 个文件）: {dataset_dir} -> {repo_id}/{path_in_repo} ...")
+            for sub_idx in range(n_subdirs):
+                start_d = sub_idx * dir_limit
+                end_d = min(start_d + dir_limit, total)
+                sub_files = all_files[start_d:end_d]
+                path_in_repo_sub = f"{path_in_repo}/{sub_idx}" if n_subdirs > 1 else path_in_repo
+                for start in range(0, len(sub_files), commit_batch_size):
+                    batch = sub_files[start:start + commit_batch_size]
+                    temp_dir = Path(tempfile.mkdtemp(prefix="hf_upload_"))
+                    try:
+                        for f in batch:
+                            rel = f.relative_to(dataset_dir)
+                            path_in_repo_file = f"{path_in_repo_sub}/{rel.as_posix()}"
+                            dest = temp_dir / path_in_repo_file
+                            dest.parent.mkdir(parents=True, exist_ok=True)
+                            dest.symlink_to(f.resolve())
+                        api.upload_folder(
+                            folder_path=str(temp_dir),
+                            repo_id=repo_id,
+                            repo_type="dataset",
+                        )
+                        done = start_d + start + len(batch)
+                        print(f"  已提交 {done}/{total} 个文件")
+                    finally:
+                        shutil.rmtree(temp_dir, ignore_errors=True)
+            print("目录上传完成.")
+        else:
+            # 大量文件时，upload_folder 会先扫描再上传，扫描阶段可能无进度条
+            if allow_patterns:
+                print("（大量文件时，扫描与上传进度可能稍后显示，请耐心等待）")
+            print(f"正在上传目录: {dataset_dir} -> {repo_id} ...")
+            upload_kw = {
+                "folder_path": str(dataset_dir),
+                "repo_id": repo_id,
+                "repo_type": "dataset",
+            }
+            if path_in_repo:
+                upload_kw["path_in_repo"] = path_in_repo
+            if allow_patterns:
+                upload_kw["allow_patterns"] = allow_patterns
+            api.upload_folder(**upload_kw)
+            print("目录上传完成.")
 
     print(f"数据集地址: https://huggingface.co/datasets/{repo_id}")
 
@@ -270,6 +319,16 @@ def main():
         "--strict-login-check",
         action="store_true",
         help="严格模式：在线 whoami 校验失败时直接退出（默认仅警告并继续）",
+    )
+    up.add_argument(
+        "--no-ssl-verify",
+        action="store_true",
+        help="跳过 HTTPS 证书校验（经代理出现 SSL UNEXPECTED_EOF 时使用，仅限可信代理）",
+    )
+    up.add_argument(
+        "--large-folder",
+        action="store_true",
+        help="使用 upload_large_folder 分批提交，避免大目录单次 commit 超时（504）",
     )
 
     # ---------- download ----------

@@ -1,0 +1,84 @@
+task_name: benchmark_similarity
+id_field: id
+resume: false
+
+num_workers: 4
+fetch_batch_size: 64
+worker_async_concurrency: 8
+worker_queue_size: 256
+
+output_jsonl: output/benchmark_similarity_results.jsonl
+error_jsonl: output/benchmark_similarity_errors.jsonl
+
+dump_interval_sec: 30
+dump_every_n: 500
+
+# local-only task; endpoints will be ignored
+endpoint_registry_file: scripts/env/endpoints.json
+endpoint_group: local_multi
+
+ray_local_mode: false
+
+task_config:
+  similarity_backend: auto
+  embedding_model: sentence-transformers/all-MiniLM-L6-v2
+  embedding_batch_size: 64
+  text_mode: qa_concat
+  ranking_score_field: selection_score
+  top_k_matches: 3
+  export_top_k: 1000
+  max_records: 0
+  max_benchmark_records: 0
+  max_text_chars: 1200
+  include_benchmark_context: true
+  include_candidate_context: false
+  dedupe_benchmark_by_text: false
+  dedupe_candidate_by_text: false
+  skip_missing_paths: true
+  save_similarity_text: false
+  save_context: false
+  coverage_threshold: 0.45
+  scoring_weights:
+    semantic: 0.42
+    skill: 0.18
+    reasoning: 0.08
+    domain: 0.05
+    duration: 0.06
+    modality: 0.06
+    locality: 0.03
+    answer_type: 0.02
+    source_prior: 0.10
+  benchmark_weights:
+    videomme: 1.0
+    lvbench: 1.0
+    longvideobench: 1.0
+
+  # 若不手写 candidate_sources，可直接启用默认 Molmo2 视频候选池：
+  # AskModelAnything / Cap / CapQA / LongCapQA / VideoSubtitleQA / VideoCountEval / VideoPoint(train)
+  use_default_molmo2_qa_sources: true
+  molmo2_root: /ov2/dataset_molmo2
+
+  # 这部分需要你按本地 benchmark 标注路径改掉
+  benchmark_sources:
+    - name: videomme
+      path: /path/to/VideoMME/qa.jsonl
+      id_field: id
+      question_field: question
+      answer_field: answer
+      context_fields: [options]
+      metadata_fields: [video_id, category]
+    - name: lvbench
+      path: /path/to/LVBench/qa.json
+      record_field: data
+      id_field: question_id
+      question_field: question
+      answer_field: answer
+      context_fields: [choices]
+      metadata_fields: [video_id, duration]
+    - name: longvideobench
+      path: /path/to/LongVideoBench/qa.parquet
+      id_field: id
+      question_field: question
+      answer_field: answer
+      context_fields: [options]
+      metadata_fields: [video_id, subset]

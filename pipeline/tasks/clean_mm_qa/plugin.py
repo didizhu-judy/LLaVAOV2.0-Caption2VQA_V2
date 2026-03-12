@@ -112,7 +112,7 @@ class CleanMMQATask(TaskPlugin):
         encoded, mime = _encode_image(image_path, max_longer_edge=max_image_longer_edge)
         max_tokens = _cfg_int(task_cfg, "max_tokens", default=512)
         with_ppl = bool(task_cfg.get("with_ppl", False))
-        include_answer_in_judge = bool(task_cfg.get("include_answer_in_judge", True))
+        include_answer_in_judge = bool(task_cfg.get("include_answer_in_judge", False))
 
         max_prefill_tokens = _cfg_int(task_cfg, "max_prefill_tokens", default=8192)
         reserve_tokens = 1100

@@ -99,24 +99,34 @@ def load_processed_ids(path: str, id_field: str) -> set[str]:
 def run_pipeline(config: PipelineConfig, *, shutdown_ray_after: bool = True) -> dict[str, Any]:
     plugin = get_task_plugin(config.task_name)
     config.ensure_output_dirs()
+    requires_endpoints = bool(getattr(plugin, "requires_endpoints", True))
 
-    endpoints = resolve_endpoints_for_config(config)
-    config.endpoints = [endpoint.to_dict() for endpoint in endpoints]
-    n_ep = len(endpoints)
-    print(
-        f"[pipeline] Resolved {n_ep} endpoint(s): {[e.name for e in endpoints]}",
-        file=sys.stderr,
-        flush=True,
-    )
-    reachable = _check_endpoints_reachable(endpoints)
-    if reachable < n_ep and n_ep > 1:
+    if requires_endpoints:
+        endpoints = resolve_endpoints_for_config(config)
+        config.endpoints = [endpoint.to_dict() for endpoint in endpoints]
+        n_ep = len(endpoints)
         print(
-            f"[pipeline] WARNING: Only {reachable}/{n_ep} endpoints reachable. Throughput may be limited. Start all instances (e.g. run_local_sglang.sh) or check ports.",
+            f"[pipeline] Resolved {n_ep} endpoint(s): {[e.name for e in endpoints]}",
             file=sys.stderr,
             flush=True,
         )
-    elif reachable == n_ep and n_ep > 1:
-        print(f"[pipeline] All {n_ep} endpoints reachable.", file=sys.stderr, flush=True)
+        reachable = _check_endpoints_reachable(endpoints)
+        if reachable < n_ep and n_ep > 1:
+            print(
+                f"[pipeline] WARNING: Only {reachable}/{n_ep} endpoints reachable. Throughput may be limited. Start all instances (e.g. run_local_sglang.sh) or check ports.",
+                file=sys.stderr,
+                flush=True,
+            )
+        elif reachable == n_ep and n_ep > 1:
+            print(f"[pipeline] All {n_ep} endpoints reachable.", file=sys.stderr, flush=True)
+    else:
+        endpoints = []
+        config.endpoints = []
+        print(
+            f"[pipeline] Task '{config.task_name}' is local-only; skipping endpoint resolution.",
+            file=sys.stderr,
+            flush=True,
+        )
 
     items = plugin.load_items(config)
     if config.resume:

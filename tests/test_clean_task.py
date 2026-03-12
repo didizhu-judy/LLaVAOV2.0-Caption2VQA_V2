@@ -93,3 +93,44 @@ def test_clean_task_load_build_parse_and_split(tmp_path: Path) -> None:
     assert len(clean_records) == 1
     assert len(dirty_records) == 1
     assert "_clean_verdict" not in clean_records[0]
+
+
+def test_clean_task_keep_strategy_relevance_only(tmp_path: Path) -> None:
+    image_path = tmp_path / "sample.jpg"
+    image_path.write_bytes(b"\xff\xd8\xff\xd9")
+
+    input_path = tmp_path / "input.jsonl"
+    record = {
+        "id": "sample-1",
+        "question": "What is shown in the figure?",
+        "answer": "A cat",
+        "images": [str(image_path)],
+    }
+    input_path.write_text(json.dumps(record, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    config = PipelineConfig(
+        task_name="clean_mm_qa",
+        task_config={
+            "input_jsonl": str(input_path),
+            "keep_strategy": "relevance_only",
+            "relevance_keep_threshold": 4,
+            "necessity_keep_threshold": 4,
+        },
+    )
+
+    task = CleanMMQATask()
+    item = task.load_items(config)[0]
+    llm_response = {
+        "choices": [
+            {
+                "message": {
+                    "content": '{"relevance_score": 5, "necessity_score": 1, "reason": "aligned but image not necessary"}'
+                }
+            }
+        ]
+    }
+
+    out = task.parse_response(item, llm_response, config)
+    assert out["_clean_keep"] is True
+    assert out["_clean_verdict"]["relevance_score"] == 5.0
+    assert out["_clean_verdict"]["necessity_score"] == 1.0

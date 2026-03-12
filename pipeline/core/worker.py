@@ -34,14 +34,21 @@ async def _worker_loop(
     config: PipelineConfig,
 ) -> WorkerSummary:
     plugin = get_task_plugin(config.task_name)
-    endpoints = _load_endpoints(config)
-    router = EndpointRouter(
-        endpoints=endpoints,
-        route_strategy=config.route_strategy,
-        route_failover=config.route_failover,
-    )
-    providers = {name: get_provider(name) for name in {ep.provider for ep in endpoints}}
-    endpoint_sems = _build_endpoint_semaphores(endpoints, config.worker_async_concurrency)
+    requires_endpoints = bool(getattr(plugin, "requires_endpoints", True))
+    if requires_endpoints:
+        endpoints = _load_endpoints(config)
+        router = EndpointRouter(
+            endpoints=endpoints,
+            route_strategy=config.route_strategy,
+            route_failover=config.route_failover,
+        )
+        providers = {name: get_provider(name) for name in {ep.provider for ep in endpoints}}
+        endpoint_sems = _build_endpoint_semaphores(endpoints, config.worker_async_concurrency)
+    else:
+        endpoints = []
+        router = None
+        providers = {}
+        endpoint_sems = []
 
     summary: WorkerSummary = {
         "worker_id": worker_id,
@@ -142,7 +149,7 @@ async def _process_item(
     config: PipelineConfig,
     client: httpx.AsyncClient,
     plugin: Any,
-    router: EndpointRouter,
+    router: EndpointRouter | None,
     providers: dict[str, Any],
     endpoint_sems: list[asyncio.Semaphore | None],
 ) -> tuple[ProcessedRecord | None, ErrorRecord | None]:
@@ -189,6 +196,16 @@ async def _process_item(
     llm_response: dict[str, Any] | None = None
     current_request_spec = request_spec
     max_prefill_400_retries = 2  # 最多 2 次用更严截断重试
+
+    if router is None:
+        return None, plugin.on_error(
+            item,
+            RuntimeError("Task requires HTTP request but no endpoints are configured"),
+            stage="llm_request",
+            attempts=1,
+            worker_id=worker_id,
+            config=config,
+        )
 
     while True:
         attempts += 1
@@ -317,9 +334,15 @@ async def _process_item(
             pass
 
     try:
-        processed = plugin.parse_response(
-            item, llm_response or {}, config, secondary_llm_response=secondary_llm_response
-        )
+        if secondary_llm_response is None:
+            processed = plugin.parse_response(item, llm_response or {}, config)
+        else:
+            processed = plugin.parse_response(
+                item,
+                llm_response or {},
+                config,
+                secondary_llm_response=secondary_llm_response,
+            )
     except Exception as exc:  # noqa: BLE001
         return None, plugin.on_error(
             item,

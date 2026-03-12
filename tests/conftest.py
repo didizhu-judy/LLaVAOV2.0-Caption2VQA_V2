@@ -4,10 +4,23 @@ import pytest
 import ray
 
 
+_RAY_AVAILABLE = True
+
+
 @pytest.fixture(autouse=True)
 def ray_context():
+    global _RAY_AVAILABLE
     if not ray.is_initialized():
-        ray.init(local_mode=True, ignore_reinit_error=True, include_dashboard=False)
+        try:
+            ray.init(local_mode=True, ignore_reinit_error=True, include_dashboard=False)
+            _RAY_AVAILABLE = True
+        except PermissionError:
+            _RAY_AVAILABLE = False
     yield
-    if ray.is_initialized():
+    if _RAY_AVAILABLE and ray.is_initialized():
         ray.shutdown()
+
+
+@pytest.fixture
+def ray_available() -> bool:
+    return _RAY_AVAILABLE
